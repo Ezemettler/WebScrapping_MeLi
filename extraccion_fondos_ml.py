@@ -2,9 +2,21 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import math
+import time
 import unidecode
 
-# Función para obtener los títulos, ubicaciones, precios y rubros de las publicaciones en una página de Mercado Libre
+def obtener_valor_etiqueta(articulo, etiquetas):
+    intentos = 0
+    while intentos < 3:
+        for etiqueta, clase in etiquetas:
+            elemento = articulo.find(etiqueta, class_=clase)
+            if elemento:
+                return elemento.text.strip()
+        intentos += 1
+        time.sleep(0.5)  # Esperar medio segundo antes de intentar nuevamente
+        print(f'Intento {intentos} fallido para etiquetas {etiquetas}. Reintentando...')
+    return 'No encontrado'
+
 def obtener_datos_pagina(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -12,36 +24,35 @@ def obtener_datos_pagina(url):
     
     datos = []
     for articulo in articulos:
-        titulo_elem = articulo.find('h2', class_='ui-search-item__title')
-        ubicacion_elem = articulo.find('span', class_='ui-search-item__location-label')
-        precio_elem = articulo.find('span', class_='andes-money-amount ui-search-price__part ui-search-price__part--medium andes-money-amount--cents-superscript')
+        # Obtener título (verificar ambas clases posibles)
+        titulo = obtener_valor_etiqueta(articulo, [('h2', 'ui-search-item__title'), ('h2', 'poly-box')]) # las 2 etiquetas que son titulo
+        if titulo == 'No encontrado':
+            continue  # Saltar este artículo si no se encontró el título
         
-        if titulo_elem:
-            titulo = titulo_elem.text.strip()
-        else:
-            titulo = 'No encontrado'
-        
-        if ubicacion_elem:
-            ubicacion = ubicacion_elem.text.strip()
-        else:
-            ubicacion = 'No especificada'
-        
-        if precio_elem:
-            precio = precio_elem.text.strip()
-        else:
-            precio = 'No especificado'
-        
-        # Determinar el rubro basado en palabras clave en el título
-        rubro = determinar_rubro(titulo)
-        
-        datos.append([titulo, ubicacion, precio, rubro])
+        # Obtener moneda y precio
+        moneda = obtener_valor_etiqueta(articulo, [('span', 'andes-money-amount__currency-symbol')])    
+        precio = int(obtener_valor_etiqueta(articulo, [('span', 'andes-money-amount__fraction')]).split()[0].replace('.', ''))
+
+        datos.append([titulo, moneda, precio])
     
     return datos
 
-# Función para determinar el rubro basado en palabras clave en el título
+def obtener_cantidad_paginas(url_base):
+    response = requests.get(url_base)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    resultados_elem = soup.find('span', class_='ui-search-search-result__quantity-results')
+    
+    if resultados_elem:
+        cantidad_resultados = int(resultados_elem.text.strip().split()[0].replace('.', ''))
+        cantidad_paginas = math.ceil(cantidad_resultados / 48)
+    else:
+        cantidad_paginas = 1
+    
+    return cantidad_paginas
+
 def determinar_rubro(titulo):
-    # Lista de palabras clave y sus rubros correspondientes
-    palabras_clave = {
+    # Definir las palabras clave y sus rubros correspondientes
+    rubros = {
         'autoservicio': 'Supermercado',
         'barberia': 'Barbería',
         'bebida': 'Bebidas',
@@ -126,48 +137,36 @@ def determinar_rubro(titulo):
     # Normalizar el título eliminando acentos y convirtiendo a minúsculas
     titulo_normalizado = unidecode.unidecode(titulo).lower()
     
-    # Buscar palabras clave en el título normalizado y asignar el rubro correspondiente
-    for palabra, rubro in palabras_clave.items():
+    # Buscar la primera palabra clave que coincida
+    for palabra, rubro in rubros.items():
         if palabra in titulo_normalizado:
             return rubro
-    
-    return 'Otros'  # Si ninguna palabra clave coincide, asignar 'Otros'
+    return 'Otros'      # Si no se encuentra ninguna palabra clave, devolver "Otros"
 
-# Función para obtener la cantidad total de páginas disponibles basada en el número total de resultados
-def obtener_cantidad_paginas(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+def main(url_base):
+    cantidad_paginas = obtener_cantidad_paginas(url_base)
+    datos_totales = []
+    for pagina in range(1, cantidad_paginas + 1):
+        url = url_base + f'_Desde_{(pagina-1)*48+1}'
+        print(f'Cargando página {pagina} de {cantidad_paginas}')
+        datos_pagina = obtener_datos_pagina(url)
+        datos_totales.extend(datos_pagina)
+        time.sleep(1)  # Esperar 1 segundo entre cada solicitud
     
-    # Busca el elemento que contiene la cantidad total de resultados
-    resultados_elem = soup.find('span', class_='ui-search-search-result__quantity-results')
+    # Crear un DataFrame con los datos obtenidos
+    columnas = ['Titulo', 'Moneda', 'Precio']
+    df = pd.DataFrame(datos_totales, columns=columnas)
     
-    if resultados_elem:
-        # Extrae el texto que contiene el número de resultados y lo convierte a entero
-        cantidad_resultados = int(resultados_elem.text.strip().split()[0])
-        
-        # Calcula la cantidad de páginas necesarias, asumiendo 48 resultados por página
-        cantidad_paginas = math.ceil(cantidad_resultados / 48)
-    else:
-        cantidad_paginas = 1  # En caso de no encontrar resultados, se asume una sola página
-    
-    return cantidad_paginas
+    # Calcular el rubro y agregarlo como una nueva columna
+    df['Rubro'] = df['Titulo'].apply(determinar_rubro)
 
-# URL de ejemplo (modificar según las necesidades)
+    # Guardar el DataFrame en un archivo CSV
+    df.to_csv('fondos_de_comercio_datos.csv', index=False)
+    print(f'Se han recogido datos de {cantidad_paginas} páginas.')
+    print(df)
+
+# URL base de ejemplo (modificar según las necesidades)
 url_base = 'https://inmuebles.mercadolibre.com.ar/fondo-de-comercio/venta/dueno-directo/'
-cantidad_paginas = obtener_cantidad_paginas(url_base)
 
-datos_totales = []
-
-# Iterar sobre todas las páginas de resultados disponibles
-for pagina in range(1, cantidad_paginas + 1):
-    url = url_base + f'_Desde_{(pagina-1)*48+1}'
-    datos_totales.extend(obtener_datos_pagina(url))
-
-# Crear un DataFrame con los datos obtenidos
-columnas = ['Titulo', 'Ubicacion', 'Precio', 'Rubro']
-df = pd.DataFrame(datos_totales, columns=columnas)
-
-# Guardar el DataFrame en un archivo CSV
-df.to_csv('fondos_de_comercio_datos.csv', index=False)
-print(f'Se han recogido datos de {cantidad_paginas} páginas.')
-print(df)
+if __name__ == "__main__":
+    main(url_base)
