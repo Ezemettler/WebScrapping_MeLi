@@ -33,7 +33,11 @@ def obtener_datos_pagina(url):
         moneda = obtener_valor_etiqueta(articulo, [('span', 'andes-money-amount__currency-symbol')])    
         precio = int(obtener_valor_etiqueta(articulo, [('span', 'andes-money-amount__fraction')]).split()[0].replace('.', ''))
 
-        datos.append([titulo, moneda, precio])
+        # Obtener ubicación
+        ubicacion = obtener_valor_etiqueta(articulo, [('span', 'poly-component__location'), ('span', 'ui-search-item__location-label')]) 
+        if ',' in ubicacion: ubicacion = ubicacion.split(',', 1)[1].strip()   # Limpia la direccion y altura, lo que esta antes de la 1er coma.
+
+        datos.append([titulo, moneda, precio, ubicacion])
     
     return datos
 
@@ -154,7 +158,7 @@ def main(url_base):
         time.sleep(1)  # Esperar 1 segundo entre cada solicitud
     
     # Crear un DataFrame con los datos obtenidos
-    columnas = ['Titulo', 'Moneda', 'Precio']
+    columnas = ['Titulo', 'Moneda', 'Precio', 'Ubicacion']
     df = pd.DataFrame(datos_totales, columns=columnas)
     
     # Calcular el rubro y agregarlo como una nueva columna
