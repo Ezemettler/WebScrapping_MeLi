@@ -119,6 +119,7 @@ def determinar_rubro(titulo):
         'pelotero': 'Eventos',
         'pizza': 'Pizzería',
         'pizzeria': 'Pizzería',
+        'empanada': 'Pizzería',
         'prendas de vestir': 'Indumentaria',
         'quiniela': 'Lotería',
         'quiosco': 'Kiosco',
@@ -165,7 +166,7 @@ def main(url_base):
     df['Rubro'] = df['Titulo'].apply(determinar_rubro)
 
     # Guardar el DataFrame en un archivo CSV
-    df.to_csv('fondos_de_comercio_datos.csv', index=False)
+    df.to_csv('/home/eze-ubuntu/Documents/data_projects/partnerds/fondos_ml/fondos_de_comercio_datos.csv', index=False)
     print(f'Se han recogido datos de {cantidad_paginas} páginas.')
     print(df)
 
