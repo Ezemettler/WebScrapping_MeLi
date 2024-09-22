@@ -4,6 +4,7 @@ import pandas as pd
 import math
 import time
 import unidecode
+import datetime
 
 def obtener_valor_etiqueta(articulo, etiquetas):
     intentos = 0
@@ -275,8 +276,10 @@ def main(url_base):
     # Calcular el rubro y agregarlo como una nueva columna
     df['Rubro'] = df['Titulo'].apply(determinar_rubro)
 
-    # Guardar el DataFrame en un archivo CSV
-    df.to_csv('/home/eze-ubuntu/Documents/data_projects/partnerds/fondos_ml/fondos_de_comercio_datos.csv', index=False)
+    # Guardar el DataFrame en un archivo CSV con la fecha del dia que se genera.
+    fecha_hoy = datetime.datetime.now().strftime('%Y-%m-%d')    # Obtiene la fecha actual.
+    nombre_archivo = f'/home/eze-ubuntu/Documents/data_projects/partnerds/fondos_ml/fondos_de_comercio_datos_{fecha_hoy}.csv'
+    df.to_csv(nombre_archivo, index=False)
     print(f'Se han recogido datos de {cantidad_paginas} páginas.')
     print(df)
 
